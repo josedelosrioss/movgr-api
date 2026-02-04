@@ -1,0 +1,39 @@
+# SAM CLI configuration file
+# More info: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "movgr-api"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "movgr-api"
+region = "eu-west-1"
+parameter_overrides = "Environment=prod ScrapeIntervalSeconds=30"
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[dev]
+[dev.deploy.parameters]
+stack_name = "movgr-api-dev"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+s3_prefix = "movgr-api-dev"
+region = "eu-west-1"
+parameter_overrides = "Environment=dev ScrapeIntervalSeconds=60"

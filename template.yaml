@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: MovGR API - Metro arrivals with DynamoDB caching
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  ScrapeIntervalSeconds:
+    Type: Number
+    Default: 30
+    MinValue: 10
+    MaxValue: 300
+    Description: How often to scrape metro data (in seconds)
+
+  CorsOrigins:
+    Type: String
+    Default: "*"
+    Description: Comma-separated list of allowed CORS origins
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        AWS_REGION: !Ref AWS::Region
+        DYNAMODB_TABLE_NAME: !Ref MetroArrivalsTable
+        USE_DYNAMODB: "true"
+        CORS_ORIGINS: !Ref CorsOrigins
+
+Resources:
+  # DynamoDB Table for storing metro arrivals
+  MetroArrivalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub movgr-metro-arrivals-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: MovGR
+
+  # Scraper Lambda Function - runs on schedule to fetch and cache metro data
+  ScraperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub movgr-metro-scraper-${Environment}
+      Handler: src.scraper.handler
+      CodeUri: .
+      Description: Scrapes metro arrival data and stores in DynamoDB
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetroArrivalsTable
+      Events:
+        ScheduledScrape:
+          Type: Schedule
+          Properties:
+            Schedule: !Sub rate(${ScrapeIntervalSeconds} seconds)
+            Name: !Sub movgr-scrape-schedule-${Environment}
+            Description: Triggers metro data scraping
+            Enabled: true
+      Tags:
+        Environment: !Ref Environment
+        Application: MovGR
+
+  # API Lambda Function - serves cached data to mobile apps
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub movgr-api-${Environment}
+      Handler: src.app.handler
+      CodeUri: .
+      Description: MovGR API - serves metro arrival data
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MetroArrivalsTable
+      Events:
+        ApiGateway:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+        RootPath:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+      Tags:
+        Environment: !Ref Environment
+        Application: MovGR
+
+  # HTTP API Gateway
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowHeaders:
+          - "*"
+
+  # CloudWatch Log Groups with retention
+  ScraperLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/movgr-metro-scraper-${Environment}
+      RetentionInDays: 14
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/movgr-api-${Environment}
+      RetentionInDays: 14
+
+  # CloudWatch Alarm for scraper failures
+  ScraperErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub movgr-scraper-errors-${Environment}
+      AlarmDescription: Alarm when metro scraper has errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ScraperFunction
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTP API endpoint URL
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+
+  DynamoDBTableName:
+    Description: DynamoDB table name for metro arrivals
+    Value: !Ref MetroArrivalsTable
+
+  ScraperFunctionArn:
+    Description: Scraper Lambda function ARN
+    Value: !GetAtt ScraperFunction.Arn
+
+  ApiFunctionArn:
+    Description: API Lambda function ARN
+    Value: !GetAtt ApiFunction.Arn

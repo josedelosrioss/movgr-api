@@ -37,3 +37,14 @@ resolve_s3 = true
 s3_prefix = "movgr-api-dev"
 region = "eu-west-1"
 parameter_overrides = "Environment=dev ScrapeIntervalSeconds=60"
+
+# Configuration for high-frequency scraping (5 seconds) using Step Functions
+[fast]
+[fast.deploy.parameters]
+stack_name = "movgr-api-fast"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "movgr-api-fast"
+region = "eu-west-1"
+parameter_overrides = "Environment=prod ScrapeIntervalSeconds=5 UseStepFunctions=true"

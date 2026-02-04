@@ -15,14 +15,26 @@ Parameters:
   ScrapeIntervalSeconds:
     Type: Number
     Default: 30
-    MinValue: 10
+    MinValue: 5
     MaxValue: 300
-    Description: How often to scrape metro data (in seconds)
+    Description: How often to scrape metro data (in seconds). For intervals < 60s, uses Step Functions.
+
+  UseStepFunctions:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Use Step Functions for sub-minute scraping intervals
 
   CorsOrigins:
     Type: String
     Default: "*"
     Description: Comma-separated list of allowed CORS origins
+
+Conditions:
+  UseStepFunctionsCondition: !Equals [!Ref UseStepFunctions, "true"]
+  UseEventBridgeCondition: !Equals [!Ref UseStepFunctions, "false"]
 
 Globals:
   Function:
@@ -66,17 +78,31 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MetroArrivalsTable
-      Events:
-        ScheduledScrape:
-          Type: Schedule
-          Properties:
-            Schedule: !Sub rate(${ScrapeIntervalSeconds} seconds)
-            Name: !Sub movgr-scrape-schedule-${Environment}
-            Description: Triggers metro data scraping
-            Enabled: true
       Tags:
         Environment: !Ref Environment
         Application: MovGR
+
+  # EventBridge schedule for scraper (used when interval >= 60 seconds)
+  ScraperSchedule:
+    Type: AWS::Events::Rule
+    Condition: UseEventBridgeCondition
+    Properties:
+      Name: !Sub movgr-scrape-schedule-${Environment}
+      Description: Triggers metro data scraping
+      ScheduleExpression: !Sub rate(${ScrapeIntervalSeconds} seconds)
+      State: ENABLED
+      Targets:
+        - Id: ScraperTarget
+          Arn: !GetAtt ScraperFunction.Arn
+
+  ScraperSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Condition: UseEventBridgeCondition
+    Properties:
+      FunctionName: !Ref ScraperFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScraperSchedule.Arn
 
   # API Lambda Function - serves cached data to mobile apps
   ApiFunction:
@@ -133,6 +159,51 @@ Resources:
       LogGroupName: !Sub /aws/lambda/movgr-api-${Environment}
       RetentionInDays: 14
 
+  # Step Functions State Machine for sub-minute scraping
+  ScraperStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Condition: UseStepFunctionsCondition
+    Properties:
+      Name: !Sub movgr-scraper-loop-${Environment}
+      Definition:
+        Comment: Scrapes metro data every N seconds using a loop
+        StartAt: Scrape
+        States:
+          Scrape:
+            Type: Task
+            Resource: !GetAtt ScraperFunction.Arn
+            Next: Wait
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                Next: Wait
+          Wait:
+            Type: Wait
+            Seconds: !Ref ScrapeIntervalSeconds
+            Next: ShouldContinue
+          ShouldContinue:
+            Type: Choice
+            Choices:
+              - Variable: $.continue
+                BooleanEquals: false
+                Next: Done
+            Default: Scrape
+          Done:
+            Type: Succeed
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ScraperFunction
+      Events:
+        # Trigger state machine every 15 minutes to restart the loop
+        ScheduledRestart:
+          Type: Schedule
+          Properties:
+            Schedule: rate(14 minutes)
+            Input: '{"continue": true}'
+      Tags:
+        Environment: !Ref Environment
+        Application: MovGR
+
   # CloudWatch Alarm for scraper failures
   ScraperErrorAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -166,3 +237,8 @@ Outputs:
   ApiFunctionArn:
     Description: API Lambda function ARN
     Value: !GetAtt ApiFunction.Arn
+
+  StateMachineArn:
+    Description: Step Functions state machine ARN (for sub-minute scraping)
+    Condition: UseStepFunctionsCondition
+    Value: !Ref ScraperStateMachine

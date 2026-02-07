@@ -69,6 +69,8 @@ Resources:
   # Scraper Lambda Function - runs on schedule to fetch and cache metro data
   ScraperFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.10
     Properties:
       FunctionName: !Sub movgr-metro-scraper-${Environment}
       Handler: src.scraper.handler
@@ -106,6 +108,8 @@ Resources:
   # API Lambda Function - serves cached data to mobile apps
   ApiFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.10
     Properties:
       FunctionName: !Sub movgr-api-${Environment}
       Handler: src.app.handler

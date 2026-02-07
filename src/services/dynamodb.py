@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,6 +13,18 @@ from src.models.metro import LlegadasMetro
 logger = logging.getLogger(__name__)
 
 PARTITION_KEY = "METRO_ARRIVALS"
+
+# In-memory cache for Lambda warm instances
+_cache: dict[str, Any] = {
+    "data": None,
+    "timestamp": 0,
+}
+
+
+def _get_cache_ttl() -> int:
+    """Get cache TTL in seconds from settings."""
+    settings = get_settings()
+    return getattr(settings, "memory_cache_ttl", 5)
 
 
 def _get_dynamodb_table():
@@ -48,7 +61,26 @@ def store_metro_arrivals(llegadas: list[LlegadasMetro]) -> bool:
 
 
 def get_metro_arrivals() -> list[LlegadasMetro] | None:
-    """Retrieve metro arrivals data from DynamoDB."""
+    """
+    Retrieve metro arrivals data with in-memory caching.
+
+    Cache hierarchy:
+    1. In-memory cache (sub-millisecond, survives within Lambda warm instance)
+    2. DynamoDB (5-10ms fallback)
+
+    This provides <0.1ms response times for most requests while Lambda is warm.
+    """
+    cache_ttl = _get_cache_ttl()
+
+    # Check in-memory cache first
+    if _cache["data"] is not None:
+        cache_age = time.time() - _cache["timestamp"]
+        if cache_age < cache_ttl:
+            logger.debug("Cache hit (age: %.2fs)", cache_age)
+            return _cache["data"]
+        logger.debug("Cache expired (age: %.2fs, ttl: %ds)", cache_age, cache_ttl)
+
+    # Fetch from DynamoDB
     table = _get_dynamodb_table()
 
     try:
@@ -62,9 +94,15 @@ def get_metro_arrivals() -> list[LlegadasMetro] | None:
         data = json.loads(item["data"])
         updated_at = item.get("updated_at", "unknown")
 
-        logger.debug("Retrieved metro arrivals from %s", updated_at)
+        logger.debug("Retrieved metro arrivals from DynamoDB (updated: %s)", updated_at)
 
-        return [LlegadasMetro.model_validate(llegada) for llegada in data]
+        llegadas = [LlegadasMetro.model_validate(llegada) for llegada in data]
+
+        # Update in-memory cache
+        _cache["data"] = llegadas
+        _cache["timestamp"] = time.time()
+
+        return llegadas
 
     except ClientError as e:
         logger.error("Failed to retrieve metro arrivals: %s", e)
@@ -72,6 +110,13 @@ def get_metro_arrivals() -> list[LlegadasMetro] | None:
     except (json.JSONDecodeError, KeyError) as e:
         logger.error("Failed to parse metro arrivals data: %s", e)
         return None
+
+
+def clear_cache() -> None:
+    """Clear the in-memory cache. Useful for testing."""
+    _cache["data"] = None
+    _cache["timestamp"] = 0
+    logger.debug("In-memory cache cleared")
 
 
 def get_metro_arrival_by_stop(id_parada: str) -> LlegadasMetro | None:

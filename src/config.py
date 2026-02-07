@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Data source configuration
     use_dynamodb: bool = True  # Set to False to use direct scraping (legacy mode)
 
+    # In-memory cache TTL (seconds) - reduces DynamoDB reads for warm Lambda instances
+    memory_cache_ttl: int = 5
+
     # Scraper configuration
     scrape_timeout: int = 10
     metro_source_url: str = "https://metropolitanogranada.es/MGhorariosreal.asp"

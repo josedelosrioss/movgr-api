@@ -179,14 +179,16 @@ Resources:
           Scrape:
             Type: Task
             Resource: !GetAtt ScraperFunction.Arn
+            ResultPath: $.scraperResult
             Next: Wait
             Catch:
               - ErrorEquals:
                   - States.ALL
+                ResultPath: $.error
                 Next: Wait
           Wait:
             Type: Wait
-            Seconds: !Ref ScrapeIntervalSeconds
+            SecondsPath: $.waitSeconds
             Next: ShouldContinue
           ShouldContinue:
             Type: Choice
@@ -206,7 +208,7 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: rate(14 minutes)
-            Input: '{"continue": true}'
+            Input: !Sub '{"continue": true, "waitSeconds": ${ScrapeIntervalSeconds}}'
       Tags:
         Environment: !Ref Environment
         Application: MovGR

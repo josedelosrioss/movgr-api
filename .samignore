@@ -1,0 +1,53 @@
+# SAM build artifacts
+.aws-sam/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Poetry
+poetry.lock
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tests
+tests/
+pytest_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Development files
+.env
+.env.*
+*.md
+Makefile
+
+# Pre-commit
+.pre-commit-config.yaml
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Documentation
+docs/
+
+# Other
+*.log
+*.tmp
+.DS_Store

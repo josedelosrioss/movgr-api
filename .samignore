@@ -11,8 +11,9 @@ __pycache__/
 *.pyd
 .Python
 
-# Poetry
+# Poetry - exclude so SAM uses requirements.txt instead
 poetry.lock
+pyproject.toml
 
 # Git
 .git/

@@ -71,6 +71,8 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: python3.10
+      BuildProperties:
+        Manifest: requirements.txt
     Properties:
       FunctionName: !Sub movgr-metro-scraper-${Environment}
       Handler: src.scraper.handler
@@ -110,6 +112,8 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: python3.10
+      BuildProperties:
+        Manifest: requirements.txt
     Properties:
       FunctionName: !Sub movgr-api-${Environment}
       Handler: src.app.handler

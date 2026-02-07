@@ -38,7 +38,7 @@ Conditions:
 
 Globals:
   Function:
-    Runtime: python3.12
+    Runtime: python3.11
     Timeout: 30
     MemorySize: 256
     Environment:

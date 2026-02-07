@@ -174,7 +174,7 @@ Resources:
     Properties:
       Name: !Sub movgr-scraper-loop-${Environment}
       Definition:
-        Comment: Scrapes metro data every N seconds using a loop
+        Comment: Scrapes metro data every N seconds using a loop with 15-minute TTL
         StartAt: Scrape
         States:
           Scrape:
@@ -190,12 +190,22 @@ Resources:
           Wait:
             Type: Wait
             SecondsPath: $.waitSeconds
+            Next: DecrementCounter
+          DecrementCounter:
+            Type: Pass
+            Parameters:
+              continue.$: $.continue
+              waitSeconds.$: $.waitSeconds
+              remainingIterations.$: States.MathAdd($.remainingIterations, -1)
             Next: ShouldContinue
           ShouldContinue:
             Type: Choice
             Choices:
               - Variable: $.continue
                 BooleanEquals: false
+                Next: Done
+              - Variable: $.remainingIterations
+                NumericLessThanEquals: 0
                 Next: Done
             Default: Scrape
           Done:
@@ -209,7 +219,7 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: rate(14 minutes)
-            Input: !Sub '{"continue": true, "waitSeconds": ${ScrapeIntervalSeconds}}'
+            Input: !Sub '{"continue": true, "waitSeconds": ${ScrapeIntervalSeconds}, "remainingIterations": 180}'
       Tags:
         Environment: !Ref Environment
         Application: MovGR

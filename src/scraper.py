@@ -10,10 +10,14 @@ import csv
 import logging
 import os
 import re
+import urllib3
 from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
+
+# Suppress SSL warnings for metropolitanogranada.es (certificate chain issues)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from src.config import get_settings
 from src.models.metro import LlegadasMetro, ParadaMetro, ProximoMetro
@@ -68,6 +72,7 @@ def scrape_metro_arrivals() -> list[LlegadasMetro]:
         settings.metro_source_url,
         headers=headers,
         timeout=settings.scrape_timeout,
+        verify=False,  # metropolitanogranada.es has SSL issues with Lambda's CA bundle
     )
     response.raise_for_status()
     response.encoding = response.apparent_encoding

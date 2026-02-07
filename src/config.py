@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str | None = None
 
+    # API Gateway configuration
+    # Stage name for API Gateway - used by Mangum to strip the base path
+    api_stage: str | None = None  # Set via ENVIRONMENT in Lambda
+
 
 @lru_cache
 def get_settings() -> Settings:

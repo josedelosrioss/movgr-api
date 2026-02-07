@@ -68,9 +68,11 @@ app.include_router(router)
 try:
     from mangum import Mangum
 
+    # Configure Mangum with the API stage path for proper routing
+    _api_base_path = f"/{settings.api_stage}" if settings.api_stage else None
     handler = Mangum(
         app,
-        api_gateway_base_path=None,
+        api_gateway_base_path=_api_base_path,
         lifespan="off",
     )
 except ImportError:

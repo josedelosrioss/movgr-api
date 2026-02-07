@@ -46,6 +46,7 @@ Globals:
         DYNAMODB_TABLE_NAME: !Ref MetroArrivalsTable
         USE_DYNAMODB: "true"
         CORS_ORIGINS: !Ref CorsOrigins
+        API_STAGE: !Ref Environment
 
 Resources:
   # DynamoDB Table for storing metro arrivals

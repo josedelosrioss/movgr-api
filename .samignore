@@ -1,6 +1,11 @@
 # SAM build artifacts
 .aws-sam/
 
+# Local folders that should not be deployed
+aws/
+subida/
+package/
+
 # Python virtual environments
 .venv/
 venv/

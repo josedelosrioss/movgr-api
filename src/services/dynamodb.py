@@ -29,11 +29,15 @@ def _get_cache_ttl() -> int:
 
 def _get_dynamodb_table():
     settings = get_settings()
-    dynamodb = boto3.resource(
-        "dynamodb",
-        region_name=settings.aws_region,
-        endpoint_url=settings.dynamodb_endpoint_url,
-    )
+    # Let boto3 auto-detect region from AWS_REGION env var (set by Lambda)
+    # Only pass region_name if explicitly configured
+    kwargs = {}
+    if settings.aws_region:
+        kwargs["region_name"] = settings.aws_region
+    if settings.dynamodb_endpoint_url:
+        kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
+
+    dynamodb = boto3.resource("dynamodb", **kwargs)
     return dynamodb.Table(settings.dynamodb_table_name)
 
 

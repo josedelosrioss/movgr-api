@@ -43,7 +43,6 @@ Globals:
     MemorySize: 256
     Environment:
       Variables:
-        AWS_REGION: !Ref AWS::Region
         DYNAMODB_TABLE_NAME: !Ref MetroArrivalsTable
         USE_DYNAMODB: "true"
         CORS_ORIGINS: !Ref CorsOrigins

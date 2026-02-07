@@ -10,8 +10,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # AWS Configuration
-    aws_region: str = "eu-west-1"
+    # AWS Configuration (uses AWS_DEFAULT_REGION or falls back to eu-west-1)
+    aws_region: str | None = None  # None = use boto3's default region detection
     dynamodb_table_name: str = "movgr-metro-arrivals"
     dynamodb_endpoint_url: str | None = None  # For local development with DynamoDB Local
 

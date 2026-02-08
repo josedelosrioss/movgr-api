@@ -172,7 +172,7 @@ Resources:
     Type: AWS::Serverless::StateMachine
     Condition: UseStepFunctionsCondition
     Properties:
-      Name: !Sub movgr-scraper-loop-${Environment}
+      Name: !Sub movgr-scraper-express-${Environment}
       Type: EXPRESS
       Definition:
         Comment: Scrapes metro data every N seconds using a loop (Express, 5-min max)

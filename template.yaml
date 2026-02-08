@@ -167,14 +167,15 @@ Resources:
       LogGroupName: !Sub /aws/lambda/movgr-api-${Environment}
       RetentionInDays: 14
 
-  # Step Functions State Machine for sub-minute scraping
+  # Step Functions State Machine for sub-minute scraping (Express for low cost)
   ScraperStateMachine:
     Type: AWS::Serverless::StateMachine
     Condition: UseStepFunctionsCondition
     Properties:
       Name: !Sub movgr-scraper-loop-${Environment}
+      Type: EXPRESS
       Definition:
-        Comment: Scrapes metro data every N seconds using a loop with 15-minute TTL
+        Comment: Scrapes metro data every N seconds using a loop (Express, 5-min max)
         StartAt: Scrape
         States:
           Scrape:
@@ -210,19 +211,34 @@ Resources:
             Default: Scrape
           Done:
             Type: Succeed
+      Logging:
+        Level: ERROR
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
       Policies:
         - LambdaInvokePolicy:
             FunctionName: !Ref ScraperFunction
+        - CloudWatchLogsFullAccess
       Events:
-        # Trigger state machine every 15 minutes to restart the loop
+        # Trigger state machine every 4 minutes (Express max duration is 5 min)
         ScheduledRestart:
           Type: Schedule
           Properties:
-            Schedule: rate(14 minutes)
-            Input: !Sub '{"continue": true, "waitSeconds": ${ScrapeIntervalSeconds}, "remainingIterations": 180}'
+            Schedule: rate(4 minutes)
+            Input: !Sub '{"continue": true, "waitSeconds": ${ScrapeIntervalSeconds}, "remainingIterations": 45}'
       Tags:
         Environment: !Ref Environment
         Application: MovGR
+
+  # Log group for Express State Machine
+  StateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: UseStepFunctionsCondition
+    Properties:
+      LogGroupName: !Sub /aws/states/movgr-scraper-loop-${Environment}
+      RetentionInDays: 7
 
   # CloudWatch Alarm for scraper failures
   ScraperErrorAlarm:

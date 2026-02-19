@@ -27,10 +27,15 @@ def _get_cache_ttl() -> int:
     return getattr(settings, "memory_cache_ttl", 5)
 
 
+_dynamodb_table = None
+
+
 def _get_dynamodb_table():
+    global _dynamodb_table
+    if _dynamodb_table is not None:
+        return _dynamodb_table
+
     settings = get_settings()
-    # Let boto3 auto-detect region from AWS_REGION env var (set by Lambda)
-    # Only pass region_name if explicitly configured
     kwargs = {}
     if settings.aws_region:
         kwargs["region_name"] = settings.aws_region
@@ -38,7 +43,8 @@ def _get_dynamodb_table():
         kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
 
     dynamodb = boto3.resource("dynamodb", **kwargs)
-    return dynamodb.Table(settings.dynamodb_table_name)
+    _dynamodb_table = dynamodb.Table(settings.dynamodb_table_name)
+    return _dynamodb_table
 
 
 def store_metro_arrivals(llegadas: list[LlegadasMetro]) -> bool:

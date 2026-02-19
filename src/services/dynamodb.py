@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -27,14 +28,8 @@ def _get_cache_ttl() -> int:
     return getattr(settings, "memory_cache_ttl", 5)
 
 
-_dynamodb_table = None
-
-
-def _get_dynamodb_table():
-    global _dynamodb_table
-    if _dynamodb_table is not None:
-        return _dynamodb_table
-
+def _init_dynamodb_table():
+    """Initialize DynamoDB table resource. Called at module load time."""
     settings = get_settings()
     kwargs = {}
     if settings.aws_region:
@@ -43,7 +38,23 @@ def _get_dynamodb_table():
         kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
 
     dynamodb = boto3.resource("dynamodb", **kwargs)
-    _dynamodb_table = dynamodb.Table(settings.dynamodb_table_name)
+    return dynamodb.Table(settings.dynamodb_table_name)
+
+
+# Initialize table at module load time (during Lambda init phase)
+# This shifts boto3 initialization cost from first request to init
+_dynamodb_table = _init_dynamodb_table()
+
+# Warm up the HTTP connection during init (only in Lambda environment)
+if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    try:
+        # Light metadata call to establish connection pool
+        _dynamodb_table.table_status  # noqa: B018
+    except Exception:
+        pass  # Ignore errors during warmup
+
+
+def _get_dynamodb_table():
     return _dynamodb_table
 
 

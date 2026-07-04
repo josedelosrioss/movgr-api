@@ -1,77 +1,72 @@
-import csv
 import os
-import re
+from datetime import datetime, timezone
 
-import requests
-from bs4 import BeautifulSoup
+from src.exceptions.exceptions import MetroDataUnavailableError, ParadaNotFoundError
+from src.models.metro import LlegadasMetro
+from src.services.metro_scraper import fetch_llegadas_snapshot
+from src.services.metro_store import MetroSnapshot, MetroSnapshotStore, build_snapshot_store
 
-from src.exceptions.exceptions import ParadaNotFoundError
-from src.models.metro import (
-    LlegadasMetro,
-    ParadaMetro,
-    ProximoMetro,
-)
+snapshot_store = build_snapshot_store()
 
 
-def get_paradas() -> list[ParadaMetro]:
-    with open(os.path.join(os.path.dirname(__file__), "../data/metro/paradas.csv"), "r") as file:
-        reader = csv.reader(file)
-        next(reader)
-        paradas = [ParadaMetro(linea=row[0], id=row[1], nombre=row[2]) for row in reader]
-    return paradas
+def set_snapshot_store(store: MetroSnapshotStore) -> None:
+    """Point the REST layer at a specific store (shared with the background refresher)."""
+    global snapshot_store  # noqa: PLW0603 - single shared process-wide store
+    snapshot_store = store
 
 
-paradas = get_paradas()
+def get_current_snapshot_or_none() -> MetroSnapshot | None:
+    """Return the current snapshot without raising or enforcing staleness (used by the WS handler)."""
+    if snapshot_store is None:
+        return None
+    return snapshot_store.get_current()
+
+
+def _allow_direct_scrape() -> bool:
+    return os.getenv("ALLOW_DIRECT_METRO_SCRAPE", "true").lower() == "true"
+
+
+def _max_stale_seconds() -> int:
+    return int(os.getenv("METRO_MAX_STALE_SECONDS", "300"))
+
+
+def _snapshot_age_seconds(snapshot: MetroSnapshot) -> int:
+    return max(0, int((datetime.now(timezone.utc) - snapshot.fetched_at).total_seconds()))
+
+
+def get_llegadas_snapshot() -> MetroSnapshot:
+    if snapshot_store is None:
+        if not _allow_direct_scrape():
+            raise MetroDataUnavailableError from None
+        return fetch_llegadas_snapshot()
+
+    snapshot = snapshot_store.get_current()
+    if snapshot is None:
+        raise MetroDataUnavailableError from None
+
+    if _snapshot_age_seconds(snapshot) > _max_stale_seconds():
+        raise MetroDataUnavailableError from None
+
+    return snapshot
+
+
+def get_snapshot_headers(snapshot: MetroSnapshot) -> dict[str, str]:
+    return {
+        "X-Movgr-Data-Fetched-At": snapshot.fetched_at.isoformat(),
+        "X-Movgr-Data-Age-Seconds": str(_snapshot_age_seconds(snapshot)),
+    }
 
 
 def get_llegadas() -> list[LlegadasMetro]:
-    headers = {
-        "accept": "*/*",
-        "content-type": "application/x-www-form-urlencoded",
-        "dnt": "1",
-        "origin": "https://metropolitanogranada.es",
-        "priority": "u=0, i",
-        "referer": "https://metropolitanogranada.es/horariosreal",
-    }
-
-    response = requests.post(
-        "https://metropolitanogranada.es/MGhorariosreal.asp",
-        headers=headers,
-        timeout=5,
-        verify=False,
-    )
-    response.encoding = response.apparent_encoding
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    datos = [cell.getText().strip() for cell in soup.find_all("td")]
-    paradas_soup = [datos[i : i + 5] for i in range(0, len(datos), 5)]
-
-    for parada in paradas_soup:
-        parada[1:] = ["".join(re.findall(r"\d+", col)) for col in parada[1:]]
-
-    return [
-        LlegadasMetro(
-            parada=parada,
-            proximos=sorted(
-                [
-                    ProximoMetro(
-                        direccion="Armilla" if i >= 2 else "Albolote",  # noqa: PLR2004
-                        minutos=int(col),
-                    )
-                    for i, col in enumerate(parada_soup[1:])
-                    if col
-                ],
-                key=lambda proximo: proximo.minutos,
-            ),
-        )
-        for parada_soup, parada in zip(paradas_soup, paradas)
-    ]
+    return get_llegadas_snapshot().arrivals
 
 
-def get_llegadas_parada(id_parada: str) -> ProximoMetro:
-    proximos = get_llegadas()
-    for proximo in proximos:
+def get_llegadas_parada(
+    id_parada: str,
+    snapshot: MetroSnapshot | None = None,
+) -> LlegadasMetro:
+    current_snapshot = snapshot or get_llegadas_snapshot()
+    for proximo in current_snapshot.arrivals:
         if proximo.parada.id == id_parada:
             return proximo
     raise ParadaNotFoundError from None

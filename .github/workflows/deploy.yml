@@ -30,44 +30,12 @@ jobs:
         name: Set up Python
         with:
           python-version: '3.13'
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
       - name: Install dependencies
-        run: poetry install --with dev --no-root
+        run: pip install -r requirements-dev.txt
       - name: Run tests
-        run: poetry run pytest
+        run: PYTHONPATH=. pytest
 
-  deploy:
-    needs: [pre-commit, test]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        name: Checkout
-      - uses: actions/setup-python@v4
-        name: Set up Python
-        with:
-          python-version: '3.13'
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          poetry self add poetry-plugin-export
-      - name: Create deployment package
-        run: |
-          mkdir package
-          cd package
-          poetry export --with lambda --without-hashes -f requirements.txt -o requirements.txt
-          pip install -r requirements.txt --target .
-          cp -r ../src .
-          zip -r ../api.zip .
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-      - name: Upload to S3
-        run: aws s3 cp api.zip s3://movgr-api/api.zip
-      - name: Deploy Lambda
-        run: aws lambda update-function-code --function-name movgr-api --s3-bucket movgr-api --s3-key api.zip
+# Deployment is handled by Dokploy on the VPS via its GitHub push webhook
+# (Docker build from the repo Dockerfile), so CI only lints and tests.
+# The former AWS SAM deploy job was removed during the VPS migration; the AWS
+# stack stays frozen until it is decommissioned (see docs/vps-migration.md, Phase 5).

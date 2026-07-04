@@ -1,0 +1,32 @@
+# AWS / SAM artifacts (frozen, not needed in the container image)
+aws/
+.aws-sam/
+.aws-cli-build/
+subida/
+package/
+template.yaml
+scripts/
+
+# Tests and tooling
+tests/
+.pytest_cache/
+.pre-commit-config.yaml
+
+# Python caches and local envs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+
+# VCS / editor / CI
+.git/
+.github/
+.vscode/
+
+# Docs / meta
+*.md
+LICENSE
+poetry.lock
+requirements-dev.txt

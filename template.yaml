@@ -1,0 +1,209 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: MovGR API with centralized metro scraping
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  CorsOrigins:
+    Type: String
+    Default: "*"
+  MetroRefreshSeconds:
+    Type: Number
+    Default: 15
+    AllowedValues:
+      - 15
+  MetroMaxStaleSeconds:
+    Type: Number
+    Default: 300
+    MinValue: 15
+    MaxValue: 900
+
+Globals:
+  Function:
+    Runtime: python3.10
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        CORS_ORIGINS: !Ref CorsOrigins
+        DYNAMODB_TABLE_NAME: !Ref MetroArrivalsTable
+        USE_DYNAMODB: "true"
+        ALLOW_DIRECT_METRO_SCRAPE: "false"
+        METRO_MAX_STALE_SECONDS: !Ref MetroMaxStaleSeconds
+
+Resources:
+  MetroArrivalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub movgr-metro-arrivals-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.10
+      BuildProperties:
+        Manifest: requirements.txt
+    Properties:
+      FunctionName: !Sub movgr-api-${Environment}
+      CodeUri: .
+      Handler: src.app.handler
+      Description: MovGR API
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MetroArrivalsTable
+      Events:
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  ScraperFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.10
+      BuildProperties:
+        Manifest: requirements.txt
+    Properties:
+      FunctionName: !Sub movgr-metro-scraper-${Environment}
+      CodeUri: .
+      Handler: src.scraper.handler
+      Description: Centralized metro scraper
+      ReservedConcurrentExecutions: 1
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetroArrivalsTable
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowHeaders:
+          - "*"
+
+  ScraperStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/movgr-metro-scraper-${Environment}
+      RetentionInDays: 14
+
+  ScraperStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub movgr-metro-refresh-${Environment}
+      Type: EXPRESS
+      Definition:
+        Comment: Refresh metro arrivals every 15 seconds for four minutes
+        StartAt: Scrape
+        States:
+          Scrape:
+            Type: Task
+            Resource: ${ScraperFunctionArn}
+            ResultPath: $.scrape
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.scrape_error
+                Next: HasMoreIterations
+            Next: HasMoreIterations
+          HasMoreIterations:
+            Type: Choice
+            Choices:
+              - Variable: $.remainingIterations
+                NumericLessThanEquals: 0
+                Next: Done
+            Default: Wait
+          Wait:
+            Type: Wait
+            SecondsPath: $.waitSeconds
+            Next: DecrementCounter
+          DecrementCounter:
+            Type: Pass
+            Parameters:
+              waitSeconds.$: $.waitSeconds
+              remainingIterations.$: States.MathAdd($.remainingIterations, -1)
+            Next: Scrape
+          Done:
+            Type: Succeed
+      DefinitionSubstitutions:
+        ScraperFunctionArn: !GetAtt ScraperFunction.Arn
+      Logging:
+        Level: ALL
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt ScraperStateMachineLogGroup.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ScraperFunction
+        - CloudWatchLogsFullAccess
+      Events:
+        WarmLoop:
+          Type: Schedule
+          Properties:
+            Schedule: rate(4 minutes)
+            Input: !Sub |
+              {
+                "waitSeconds": ${MetroRefreshSeconds},
+                "remainingIterations": 15
+              }
+
+  ApiFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: API Lambda errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+  ScraperFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scraper Lambda errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ScraperFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}

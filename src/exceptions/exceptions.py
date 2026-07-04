@@ -12,3 +12,19 @@ class LineaNotFoundError(BusGranadaAPIError):
 
 class ParadaRequestError(BusGranadaAPIError):
     pass
+
+
+class MetroDataUnavailableError(BusGranadaAPIError):
+    pass
+
+
+class MetroParseError(BusGranadaAPIError):
+    pass
+
+
+class MetroScrapeError(BusGranadaAPIError):
+    pass
+
+
+class MetroSnapshotStoreError(BusGranadaAPIError):
+    pass

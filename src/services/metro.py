@@ -30,8 +30,13 @@ def _max_stale_seconds() -> int:
     return int(os.getenv("METRO_MAX_STALE_SECONDS", "300"))
 
 
-def _snapshot_age_seconds(snapshot: MetroSnapshot) -> int:
+def snapshot_age_seconds(snapshot: MetroSnapshot) -> int:
     return max(0, int((datetime.now(timezone.utc) - snapshot.fetched_at).total_seconds()))
+
+
+def is_stale(snapshot: MetroSnapshot) -> bool:
+    """True when the snapshot is older than ``METRO_MAX_STALE_SECONDS`` (REST and WS share this rule)."""
+    return snapshot_age_seconds(snapshot) > _max_stale_seconds()
 
 
 def get_llegadas_snapshot() -> MetroSnapshot:
@@ -44,7 +49,7 @@ def get_llegadas_snapshot() -> MetroSnapshot:
     if snapshot is None:
         raise MetroDataUnavailableError from None
 
-    if _snapshot_age_seconds(snapshot) > _max_stale_seconds():
+    if is_stale(snapshot):
         raise MetroDataUnavailableError from None
 
     return snapshot
@@ -53,7 +58,7 @@ def get_llegadas_snapshot() -> MetroSnapshot:
 def get_snapshot_headers(snapshot: MetroSnapshot) -> dict[str, str]:
     return {
         "X-Movgr-Data-Fetched-At": snapshot.fetched_at.isoformat(),
-        "X-Movgr-Data-Age-Seconds": str(_snapshot_age_seconds(snapshot)),
+        "X-Movgr-Data-Age-Seconds": str(snapshot_age_seconds(snapshot)),
     }
 
 

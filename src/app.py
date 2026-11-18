@@ -10,7 +10,7 @@ from src.exceptions.handler import add_exception_handler
 from src.routers.bus import router as bus_api
 from src.routers.metro import router as metro_api
 from src.services import metro as metro_service
-from src.services.metro_refresher import refresh_loop, snapshot_message
+from src.services.metro_refresher import refresh_loop, snapshot_message, stale_message
 from src.services.metro_store import InMemoryMetroSnapshotStore
 from src.services.ws_manager import WsManager
 
@@ -73,6 +73,8 @@ async def metro_ws(websocket: WebSocket) -> None:
     snapshot = metro_service.get_current_snapshot_or_none()
     if snapshot is not None:
         await websocket.send_json(snapshot_message(snapshot))
+        if metro_service.is_stale(snapshot):
+            await websocket.send_json(stale_message(snapshot))
     # Register only after the on-connect send so broadcast() never sends concurrently
     # with the line above on the same (not concurrency-safe) socket.
     await ws_manager.register(websocket)

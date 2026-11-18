@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -59,3 +59,24 @@ def test_ws_connects_without_snapshot(
     with client.websocket_connect("/ws/metro") as websocket:
         # No snapshot available yet: the connection stays open and simply sends nothing.
         websocket.send_text("ping")
+
+
+def test_ws_sends_stale_after_snapshot_when_data_is_old(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale_age_seconds = 400
+    monkeypatch.setenv("METRO_MAX_STALE_SECONDS", "300")
+    old = _build_snapshot().model_copy(
+        update={"fetched_at": datetime.now(timezone.utc) - timedelta(seconds=stale_age_seconds)},
+    )
+    monkeypatch.setattr(metro_service, "snapshot_store", InMemoryMetroSnapshotStore(old))
+
+    with client.websocket_connect("/ws/metro") as websocket:
+        first = websocket.receive_json()
+        second = websocket.receive_json()
+
+    assert first["type"] == "snapshot"
+    assert second["type"] == "stale"
+    assert second["fetched_at"] == old.fetched_at.isoformat()
+    assert second["age_seconds"] >= stale_age_seconds

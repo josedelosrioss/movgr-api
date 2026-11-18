@@ -2,12 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-
 from src.app import app
 from src.models.metro import DireccionMetro, LlegadasMetro, ProximoMetro
 from src.services import metro as metro_service
 from src.services.metro_catalog import paradas as metro_paradas
 from src.services.metro_store import InMemoryMetroSnapshotStore, MetroSnapshot
+
 
 def _build_snapshot(*, fetched_at: datetime | None = None) -> MetroSnapshot:
     fetched_at = fetched_at or datetime.now(timezone.utc)

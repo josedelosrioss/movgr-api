@@ -7,8 +7,8 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from src.exceptions.exceptions import MetroSnapshotStoreError
-from src.models.metro import LlegadasMetro
 from src.models.base import MovGrBaseModel
+from src.models.metro import LlegadasMetro
 
 METRO_CURRENT_PK = "metro_current"
 

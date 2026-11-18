@@ -1,6 +1,5 @@
 import pytest
 from fastapi.testclient import TestClient
-
 from src.app import app
 from src.models.bus import LlegadasBus, ParadaBus
 from src.services import bus as bus_service

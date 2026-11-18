@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from src.exceptions.exceptions import MetroParseError
 from src.models.metro import DireccionMetro, ParadaMetro
 from src.services.metro_scraper import parse_llegadas_html

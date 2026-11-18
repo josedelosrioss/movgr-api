@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from src.services import metro_refresher
 from src.services.metro_store import InMemoryMetroSnapshotStore, MetroSnapshot
 

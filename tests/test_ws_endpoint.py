@@ -2,19 +2,20 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-
 from src.app import app
 from src.models.metro import DireccionMetro, LlegadasMetro, ProximoMetro
 from src.services import metro as metro_service
 from src.services.metro_catalog import paradas as metro_paradas
 from src.services.metro_store import InMemoryMetroSnapshotStore, MetroSnapshot
 
+FIRST_ARRIVAL_MINUTES = 2
+
 
 def _build_snapshot() -> MetroSnapshot:
     arrivals = [
         LlegadasMetro(
             parada=next(parada for parada in metro_paradas if parada.id == "101"),
-            proximos=[ProximoMetro(direccion=DireccionMetro.Albolote, minutos=2)],
+            proximos=[ProximoMetro(direccion=DireccionMetro.Albolote, minutos=FIRST_ARRIVAL_MINUTES)],
         ),
     ]
     return MetroSnapshot(
@@ -47,7 +48,7 @@ def test_ws_sends_snapshot_on_connect(
     assert message["type"] == "snapshot"
     assert "fetched_at" in message
     assert message["arrivals"][0]["parada"]["id"] == "101"
-    assert message["arrivals"][0]["proximos"][0]["minutos"] == 2
+    assert message["arrivals"][0]["proximos"][0]["minutos"] == FIRST_ARRIVAL_MINUTES
 
 
 def test_ws_connects_without_snapshot(

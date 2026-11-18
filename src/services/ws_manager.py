@@ -19,7 +19,20 @@ class WsManager:
         return len(self._clients)
 
     async def connect(self, websocket: WebSocket) -> None:
+        """Accept and register in one step (kept for tests / simple callers)."""
+        await self.accept(websocket)
+        await self.register(websocket)
+
+    async def accept(self, websocket: WebSocket) -> None:
         await websocket.accept()
+
+    async def register(self, websocket: WebSocket) -> None:
+        """Add an already-accepted client to the broadcast set.
+
+        Call this only *after* any per-connection initial send has completed, so the
+        refresher's ``broadcast`` never sends on the same socket concurrently with the
+        endpoint's on-connect send (Starlette WebSockets are not concurrency-safe).
+        """
         async with self._lock:
             self._clients.add(websocket)
         # Wake the refresher so it leaves the idle interval and tightens its cadence now.

@@ -53,12 +53,10 @@ def __extract_parada_from_soup(soup: BeautifulSoup, id_parada: int) -> ParadaBus
 
 
 def get_parada(id_parada: int) -> ParadaBus:
-    """Scrape parada information from the bus service website."""
+    """Return parada information from the static bus catalog."""
     try:
-        response = __perform_request(id_parada)
-        soup = BeautifulSoup(response.text, "html.parser")
-        return __extract_parada_from_soup(soup, id_parada)
-    except ParadaRequestError:
+        return paradas[id_parada]
+    except KeyError:
         raise ParadaNotFoundError from None
 
 

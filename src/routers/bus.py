@@ -11,7 +11,7 @@ router = APIRouter()
     response_model=ParadaBus,
     response_description="Información de parada de bus",
 )
-async def parada(num_parada: int) -> ParadaBus:
+def parada(num_parada: int) -> ParadaBus:
     return get_parada(num_parada)
 
 
@@ -20,5 +20,5 @@ async def parada(num_parada: int) -> ParadaBus:
     response_model=LlegadasBus,
     response_description="Información de parada de bus",
 )
-async def llegadas(num_parada: int) -> LlegadasBus:
+def llegadas(num_parada: int) -> LlegadasBus:
     return get_llegadas_parada(num_parada)

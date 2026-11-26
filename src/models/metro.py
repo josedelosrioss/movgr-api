@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 
 from pydantic import Field
@@ -24,3 +25,12 @@ class ParadaMetro(MovGrBaseModel):
 class LlegadasMetro(MovGrBaseModel):
     parada: ParadaMetro
     proximos: list[ProximoMetro]
+
+
+class EstadoServicioMetro(MovGrBaseModel):
+    """Estado del servicio publicado por metropolitanogranada.es (``/servicioEstado``)."""
+
+    normal: bool
+    texto: str
+    desde: datetime  # primera vez que se vio este texto exacto (UTC)
+    actualizado: datetime  # última comprobación correcta (UTC)

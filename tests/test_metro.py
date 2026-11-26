@@ -3,9 +3,10 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 from src.app import app
-from src.models.metro import DireccionMetro, LlegadasMetro, ProximoMetro
+from src.models.metro import DireccionMetro, EstadoServicioMetro, LlegadasMetro, ProximoMetro
 from src.services import metro as metro_service
 from src.services.metro_catalog import paradas as metro_paradas
+from src.services.metro_status import InMemoryServiceStatusStore, next_status
 from src.services.metro_store import InMemoryMetroSnapshotStore, MetroSnapshot
 
 
@@ -91,5 +92,70 @@ def test_llegadas_returns_503_when_snapshot_expired(
     metro_snapshot_store.put_current(stale_snapshot)
 
     response = client.get("/metro/llegadas")
+
+    assert response.status_code == 503  # noqa: PLR2004
+
+
+# --- /metro/estado -----------------------------------------------------------
+
+
+@pytest.fixture
+def status_store(monkeypatch: pytest.MonkeyPatch) -> InMemoryServiceStatusStore:
+    store = InMemoryServiceStatusStore()
+    monkeypatch.setattr(metro_service, "status_store", store)
+    monkeypatch.setenv("ALLOW_DIRECT_METRO_SCRAPE", "false")
+    monkeypatch.setenv("METRO_MAX_STALE_SECONDS", "300")
+    return store
+
+
+def test_estado_normal(client: TestClient, status_store: InMemoryServiceStatusStore) -> None:
+    now = datetime.now(timezone.utc)
+    status_store.put_current(next_status(None, "Servicio sin incidencias", now))
+
+    response = client.get("/metro/estado")
+
+    assert response.status_code == 200  # noqa: PLR2004
+    data = response.json()
+    assert data["normal"] is True
+    assert data["texto"] == "Servicio sin incidencias"
+    assert EstadoServicioMetro.model_validate(data)
+    assert int(response.headers["x-movgr-data-age-seconds"]) >= 0
+    assert "x-movgr-data-fetched-at" in response.headers
+
+
+def test_estado_incident(client: TestClient, status_store: InMemoryServiceStatusStore) -> None:
+    since = datetime.now(timezone.utc) - timedelta(minutes=12)
+    status = next_status(None, "Servicio interrumpido en Armilla", since)
+    status_store.put_current(next_status(status, "Servicio interrumpido en Armilla", datetime.now(timezone.utc)))
+
+    data = client.get("/metro/estado").json()
+
+    assert data["normal"] is False
+    assert data["texto"] == "Servicio interrumpido en Armilla"
+    assert EstadoServicioMetro.model_validate(data).desde == since
+
+
+def test_estado_returns_503_without_status(client: TestClient, status_store: InMemoryServiceStatusStore) -> None:
+    response = client.get("/metro/estado")
+
+    assert response.status_code == 503  # noqa: PLR2004
+
+
+def test_estado_returns_503_when_stale(client: TestClient, status_store: InMemoryServiceStatusStore) -> None:
+    old = datetime.now(timezone.utc) - timedelta(minutes=6)
+    status_store.put_current(next_status(None, "Servicio sin incidencias", old))
+
+    response = client.get("/metro/estado")
+
+    assert response.status_code == 503  # noqa: PLR2004
+
+
+def test_estado_without_store_and_direct_scrape_disabled_returns_503(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_service, "status_store", None)
+    monkeypatch.setenv("ALLOW_DIRECT_METRO_SCRAPE", "false")
+
+    response = client.get("/metro/estado")
 
     assert response.status_code == 503  # noqa: PLR2004

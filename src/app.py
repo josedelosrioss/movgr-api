@@ -11,6 +11,8 @@ from src.routers.bus import router as bus_api
 from src.routers.metro import router as metro_api
 from src.services import metro as metro_service
 from src.services.metro_refresher import refresh_loop, snapshot_message, stale_message
+from src.services.metro_status import InMemoryServiceStatusStore
+from src.services.metro_status_refresher import status_refresh_loop
 from src.services.metro_store import InMemoryMetroSnapshotStore
 from src.services.ws_manager import WsManager
 
@@ -23,18 +25,23 @@ def _refresher_enabled() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    refresher_task: asyncio.Task | None = None
+    tasks: list[asyncio.Task] = []
     if _refresher_enabled():
         store = InMemoryMetroSnapshotStore()
         metro_service.set_snapshot_store(store)
-        refresher_task = asyncio.create_task(refresh_loop(store, ws_manager))
+        tasks.append(asyncio.create_task(refresh_loop(store, ws_manager)))
+
+        status_store = InMemoryServiceStatusStore()
+        metro_service.set_status_store(status_store)
+        tasks.append(asyncio.create_task(status_refresh_loop(status_store)))
     try:
         yield
     finally:
-        if refresher_task is not None:
-            refresher_task.cancel()
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
             with suppress(asyncio.CancelledError):
-                await refresher_task
+                await task
 
 
 app = FastAPI(

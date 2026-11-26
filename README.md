@@ -45,6 +45,28 @@ El script empaqueta las dependencias en `.aws-cli-build/`, sube los artefactos a
 
 Puedes acceder a la documentación de la API [aquí](https://movgr.apis.mianfg.me/docs).
 
+## Estado del servicio de metro
+
+`GET /metro/estado` devuelve el estado que publica Metro de Granada en su web
+(`POST https://metropolitanogranada.es/servicioEstado`, el mismo texto del aviso de la portada):
+
+```json
+{
+  "normal": false,
+  "texto": "Retrasos puntuales",
+  "desde": "2026-11-26T11:43:51Z",
+  "actualizado": "2026-11-26T11:44:11Z"
+}
+```
+
+- `normal`: `true` cuando el texto es "Servicio sin incidencias".
+- `desde`: primera vez que se vio este texto exacto; `actualizado`: última comprobación correcta.
+- Se consulta en segundo plano cada `METRO_STATUS_REFRESH_SECONDS` (por defecto 20 s, mínimo 5),
+  aunque no haya clientes WebSocket conectados. Cada cambio de texto se registra en el log
+  ("Metro service status changed").
+- Responde `503` si todavía no hay estado o si la última comprobación correcta tiene más de
+  `METRO_MAX_STALE_SECONDS`, para no dar por bueno un "normal" desactualizado.
+
 ## Status
 
 Puedes ver el estado de la API en <https://status.mianfg.me/>.

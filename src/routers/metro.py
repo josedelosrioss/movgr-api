@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Response
 
-from src.models.metro import LlegadasMetro, ParadaMetro
+from src.models.metro import EstadoServicioMetro, LlegadasMetro, ParadaMetro
 from src.services.metro import (
+    get_data_headers,
     get_llegadas_parada,
     get_llegadas_snapshot,
+    get_service_status,
     get_snapshot_headers,
 )
 from src.services.metro_catalog import paradas as paradas_metro
@@ -40,3 +42,14 @@ def llegadas_parada(id_parada: str, response: Response) -> LlegadasMetro:
     snapshot = get_llegadas_snapshot()
     response.headers.update(get_snapshot_headers(snapshot))
     return get_llegadas_parada(id_parada, snapshot=snapshot)
+
+
+@router.get(
+    "/estado",
+    response_model=EstadoServicioMetro,
+    response_description="Estado del servicio publicado por Metro de Granada (incidencias)",
+)
+def estado(response: Response) -> EstadoServicioMetro:
+    status = get_service_status()
+    response.headers.update(get_data_headers(status.actualizado))
+    return status
